@@ -38,10 +38,13 @@ def launch_plan(args):
     if not any(sink["name"] == args.sink for sink in sinks):
         raise ValueError("TV audio sink is unavailable; refusing to use the desktop audio sink.")
 
-    width = args.width or int(monitor["width"])
-    height = args.height or int(monitor["height"])
-    refresh = args.refresh or round(float(monitor["refreshRate"]))
-    if any(not math.isfinite(value) or value <= 0 for value in (width, height, refresh)):
+    reported = (args.width or float(monitor["width"]),
+                args.height or float(monitor["height"]),
+                args.refresh or float(monitor["refreshRate"]))
+    if any(not math.isfinite(value) or value <= 0 for value in reported):
+        raise ValueError("TV reported an invalid display mode.")
+    width, height, refresh = int(reported[0]), int(reported[1]), round(reported[2])
+    if min(width, height, refresh) <= 0:
         raise ValueError("TV reported an invalid display mode.")
 
     command = ["gamescope", "--backend", "wayland", "-W", str(width), "-H", str(height),

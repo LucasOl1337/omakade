@@ -131,6 +131,27 @@ else:
         (self.root / "monitors.json").write_text("not json")
         self.assert_not_launched(self.invoke("--", "game"))
 
+    def test_invalid_display_modes_fail_without_traceback(self):
+        for field in ("width", "height", "refreshRate"):
+            original = self.monitor[field]
+            for value in (float("inf"), float("-inf"), float("nan"), 0, -1, 0.1):
+                with self.subTest(field=field, value=value):
+                    self.monitor[field] = value
+                    self.write_state()
+                    result = self.invoke("--", "game")
+                    self.assert_not_launched(result)
+                    self.assertIn("TV reported an invalid display mode", result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+            self.monitor[field] = original
+
+    def test_overrides_replace_invalid_reported_mode(self):
+        for field in ("width", "height", "refreshRate"):
+            self.monitor[field] = float("inf")
+        self.write_state()
+        result = self.invoke("--width", "1920", "--height", "1080", "--refresh", "60",
+                             "--dry-run", "--", "game")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
