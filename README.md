@@ -95,9 +95,6 @@ not something Omakade can work around; see issue #13 for details and workarounds
 
 ## Install on Omarchy or Arch
 
-> The 1.9.0 links below are prospective and will not work until the tested candidate is
-> explicitly approved and published. Use the current public release for normal installation.
-
 ### Install or upgrade from the Omarchy Package Repository
 
 On Omarchy, install Omakade from OPR with:

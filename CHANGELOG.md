@@ -2,43 +2,24 @@
 
 ## 1.9.0
 
-- Refresh the selected backup list immediately after an automatic pre-launch save copy.
-
-- Keep ProtonDB reports in game details and remove extra library card lines and overlays.
-
-- Prevent cached cover images from entering a loading-status binding loop.
-- Add an optional RomM library source with keyring credentials, local mount mapping,
-  offline catalog retention, and library, launch, and save-protection integration.
-- Add persistent per-installation launch setup, runtime diagnostics, and path repair.
-- Add a save-protection overview, custom file layouts, retention settings, and reviewed cleanup.
-- Add a persistent library repair queue with selected retries and separate identity/artwork undo.
-
-- Report manual backup creation correctly when retention removes an older backup.
-- Reject stalled or malformed pagination in the local RomM catalog parser.
-- Refuse incomplete save-folder scans and malformed backup/recovery manifests before restoring.
-  Resolve RetroArch's default save directories correctly for native and Flatpak installs.
-- Protect emulator save sets before launch, including clock data, memory cards, and native/Flatpak
-  save folders. Add restore/undo, interrupted-restore recovery, shared-storage warnings, and
-  portable save layouts. Existing single-file snapshots remain readable.
-- Keep archived ROM entries on RetroArch and reject missing archive containers before launch.
-- Clarify empty Favorites, Recent, and Needs Review views; keep source errors relevant to the selected sources.
+- Connect an optional read-only RomM library with secure credentials, locally mounted
+  games, and a catalog that remains available offline.
+- Save per-installation emulator/core choices, inspect launch diagnostics, and repair
+  missing paths. Keep explicit choices consistent across launch entry points.
+- Protect supported emulator saves before launch, including memory cards and clock data.
+  Restore and undo with shared-storage warnings and interrupted-restore recovery.
+- Review save coverage, configure custom file layouts and retention, and preview backup
+  cleanup. Refresh the selected backup list after automatic capture.
+- Work through a persistent library repair queue with source/reason filters, selected
+  retries, and separate identity and artwork undo.
+- Improve ROM identification and artwork recovery while preserving manual choices,
+  editions, and edits in searches. Prevent cached cover loading loops.
+- Keep archive entries on RetroArch and report missing archives, cores, or runtimes
+  without silently replacing a selected setup.
+- Add optional ProtonDB community reports in Steam game details, with report counts
+  and cache dates. Keep library captions uncluttered and launching independent of the service.
 - Recognize Cemu `.wua` games in session recording.
-
-- Use the library's console identity for automatic ROM launch selection, including shared
-  disc formats. Skip unavailable automatic runtimes and report missing configured cores
-  without replacing a game's chosen setup.
-
-- Add Needs Review library filters for unidentified games and missing artwork, including
-  saved filters. Count ambiguous matches in the metadata summary.
-- Start manual game and artwork searches with ROM tags removed while preserving editions
-  and subsequent edits.
-
-- Improve ROM identification, artwork recovery and retry behavior, and preserve
-  edits in manual game and artwork searches.
-- Add optional cached ProtonDB community badges for Steam store games in the
-  library and details. Show report counts and cache dates in details. Start the
-  connection disabled and keep launching independent of provider availability.
-- Clarify repository package versions versus direct release downloads.
+- Clarify empty library views, source errors, and repository versus direct package installs.
 
 ## 1.8.0
 
