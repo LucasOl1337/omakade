@@ -2,6 +2,8 @@
 
 ## 1.9.0
 
+- Refresh the selected backup list immediately after an automatic pre-launch save copy.
+
 - Keep ProtonDB reports in game details and remove extra library card lines and overlays.
 
 - Prevent cached cover images from entering a loading-status binding loop.

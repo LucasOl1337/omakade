@@ -260,6 +260,8 @@ bool SaveBackups::protectLaunch(const QString& source, const QString& game, cons
   if (!m_sets.snapshot(game, context, layout, &error))
     report(error, true);
   else {
+    if (!m_game.isEmpty())
+      m_versions = list(m_game);
     ++m_revision;
     emit changed();
   }

@@ -7,6 +7,8 @@
 #include "saves/SaveBackups.h"
 #include "saves/SaveProtection.h"
 #include <QDir>
+#include <QProcess>
+#include <QStandardPaths>
 #include <QFile>
 #include <QImage>
 #include <QJsonDocument>
@@ -41,6 +43,60 @@ QVariantMap game(const QString& id, const QString& system = "snes") {
 class FeatureWorkflowTests : public QObject {
   Q_OBJECT
 private slots:
+  void liveEmulatorRecordingAndSaveRecovery() {
+    const auto root=qEnvironmentVariable("OMAKADE_LIVE_GAME_ROOT");
+    if(root.isEmpty()) QSKIP("Opt-in live emulator fixture is not configured");
+    QCOMPARE(root,QString("/tmp/omakade-live-game"));
+    const auto content=root+"/Omakade QA.sfc", core=QString("/usr/lib/libretro/snes9x_libretro.so");
+    const auto save=root+"/saves/Omakade QA.srm";
+    QVERIFY(QFileInfo(content).isFile());QVERIFY(QFileInfo(core).isFile());
+    put(save,QByteArray(2048,0));
+    const auto database=QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)+"/omakade/library.sqlite3";
+    QProcess recorder;
+    recorder.setProgram(qEnvironmentVariable("OMAKADE_LIVE_RECORDER"));
+    QVERIFY(!recorder.program().isEmpty());recorder.start();QVERIFY(recorder.waitForStarted());
+    const auto cleanup=qScopeGuard([&] { recorder.terminate();recorder.waitForFinished(5000); });
+    QTRY_VERIFY_WITH_TIMEOUT(QFileInfo(database).isFile(),10000);
+    GameLauncher launcher;launcher.setSetupDatabase(database);launcher.setRommLibraryRoot(root);
+    SaveBackups backups(root,root+"/retroarch.cfg",root+"/backups",[&] {return launcher.gameRunning();});
+    launcher.setSaveBackups(&backups);
+    const QVariantMap installation{{"source","RomM"},{"runner",""},{"appId","live-qa"},
+      {"installPath",content},{"system","snes"}};
+    QVERIFY(launcher.saveSetup(installation,"RetroArch",core,false,{}));
+    QVERIFY2(launcher.inspect(installation)["available"].toBool(),qPrintable(launcher.inspect(installation)["error"].toString()));
+    backups.selectLaunch("RetroArch",content,core,false,"live-qa",{},{});
+    QVERIFY2(launcher.launch("RomM","live-qa",false,{},content,{},"snes"),qPrintable(launcher.lastError()));
+    QVERIFY(launcher.gameRunning());
+    QCOMPARE(backups.versions().size(),1);
+    const auto before=backups.versions().first().toMap()["id"].toString();
+    QVERIFY(!backups.restore(before));
+    QTRY_VERIFY_WITH_TIMEOUT(!launcher.gameRunning(),40000);
+    QFile changed(save);QVERIFY(changed.open(QIODevice::ReadOnly));
+    const auto played=changed.readAll();changed.close();
+    QCOMPARE(played.size(),2048);QCOMPARE(static_cast<unsigned char>(played[0]),1);
+    QVERIFY2(backups.restore(before),qPrintable(backups.message()));
+    QFile restored(save);QVERIFY(restored.open(QIODevice::ReadOnly));
+    QCOMPARE(restored.readAll(),QByteArray(2048,0));restored.close();
+    QString undo;
+    for(const auto& v:backups.versions()) if(v.toMap()["id"].toString()!=before) {undo=v.toMap()["id"].toString();break;}
+    QVERIFY(!undo.isEmpty());QVERIFY2(backups.restore(undo),qPrintable(backups.message()));
+    QFile undone(save);QVERIFY(undone.open(QIODevice::ReadOnly));QCOMPARE(undone.readAll(),played);undone.close();
+    const auto connection=QString("live-recording-verify");
+    {
+      auto db=QSqlDatabase::addDatabase("QSQLITE",connection);db.setDatabaseName(database);QVERIFY(db.open());
+      auto recorded=[&] {
+        QSqlQuery q(db);q.prepare("SELECT seconds,ended_at FROM play_sessions WHERE game_path=?");q.addBindValue(content);
+        return q.exec() && q.next() && q.value(0).toInt()>0 && q.value(1).toLongLong()>0;
+      };
+      QTRY_VERIFY_WITH_TIMEOUT(recorded(),12000);
+      db.close();
+    }
+    QSqlDatabase::removeDatabase(connection);
+    SaveBackups reopened(root,root+"/retroarch.cfg",root+"/backups",[]{return false;});
+    reopened.selectLaunch("RetroArch",content,core,false,"live-qa",{},{});
+    QVERIFY(reopened.versions().size()>=2);
+    qInfo("Real emulator save changed 0 -> 1, restore 1 -> 0, undo 0 -> 1; closed session recorded.");
+  }
   void installationSetupPersistsAndLaunchUsesRepair() {
     QTemporaryDir tmp;
     const auto old = qgetenv("PATH");
@@ -113,8 +169,8 @@ private slots:
     QVERIFY(backups.setCustomFiles(context, {path}, true));
     QVERIFY(backups.coverage(context)["valid"].toBool());
     QVERIFY(backups.coverage(context)["shared"].toBool());
-    QVERIFY(backups.protectLaunch("mgba", context["game"].toString()));
     backups.selectLaunch("mgba", context["game"].toString(), {}, false, {}, {}, {});
+    QVERIFY(backups.protectLaunch("mgba", context["game"].toString()));
     QCOMPARE(backups.versions().size(), 1);
     const auto version = backups.versions().first().toMap()["id"].toString();
     QVERIFY(!backups.coverage(context)["latestVerified"].toString().isEmpty());
