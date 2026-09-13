@@ -1,5 +1,14 @@
 # Four-feature testing candidate
 
+## Current candidate: live-tested save refresh
+
+Installed source `aaabe0615ac8` passed a real emulator launch, closed-session recording,
+automatic backup, running-emulator restore refusal, and byte-exact restore/undo.
+The live test found and fixed a stale selected-backup list after automatic capture.
+All 246 regression checks passed. See [the live acceptance report](LIVE-LAUNCH-SAVE-ACCEPTANCE-2026-09-12.md)
+for evidence, installation, rollback, and the remaining per-game/controller limits.
+The older candidate records below are historical.
+
 ## Current update: library cleanup
 
 Candidate `3afe8190c90f` removes ProtonDB caption lines and Couch library overlays.
