@@ -19,13 +19,9 @@ into one quiet, cover-focused home that follows the active Omarchy theme.
 > Omakade is an independent community project. It is not an official Omarchy
 > application.
 
-> **1.9 testing candidate:** this branch is not published. The current public
-> release remains 1.8.0 until the exact candidate is tested and approved. See the
-> [current development handoff](docs/1.9-DEVELOPMENT-HANDOFF.md).
-
 ## Features
 
-The Omakade 1.9.0 testing candidate includes:
+Omakade 1.9.0 includes:
 
 - Native and Flatpak Steam, Lutris, Heroic, Faugus, RetroArch, PCSX2,
   Ryujinx, Cemu, shadPS4, and Dolphin discovery, plus direct GOG installation
@@ -39,6 +35,10 @@ The Omakade 1.9.0 testing candidate includes:
 - Versioned save protection for supported emulator save sets, with explicit
   restore confirmation, interrupted-restore recovery, manual snapshots, storage
   usage, and confirmed backup deletion
+- Optional read-only RomM integration with a locally mounted library and offline catalog
+- Per-installation launch setup, diagnostics, and missing-path repair
+- Save-protection overview, custom layouts, retention controls, and reviewed cleanup
+- Guided library repair with persistent progress and separate identity/artwork undo
 - Optional Home, persistent Up Next, and local discovery suggestions
 - Genre, decade, and platform filters with saved-filter persistence
 - One-click details and delegated launching through the owning platform

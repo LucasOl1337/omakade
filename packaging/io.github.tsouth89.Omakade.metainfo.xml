@@ -26,12 +26,16 @@
     </screenshot>
   </screenshots>
   <releases>
-    <release version="1.9.0" date="2026-09-11">
+    <release version="1.9.0" date="2026-09-12">
       <description>
-        <p>Emulator save protection, optional ProtonDB badges, and matching and launch reliability improvements.</p>
+        <p>RomM integration, per-game launch setup, save management, and guided library repair.</p>
         <ul>
           <li>Protect supported emulator save sets before launch with versioned snapshots and recoverable restores.</li>
-          <li>Show optional cached ProtonDB community tiers for Steam store games.</li>
+          <li>Connect a read-only RomM library with local files and offline catalog retention.</li>
+          <li>Save per-installation launch choices and repair missing game paths.</li>
+          <li>Review save coverage, configure layouts, and manage backup retention.</li>
+          <li>Work through library repairs with separate identity and artwork undo.</li>
+          <li>Show optional cached ProtonDB community reports in game details.</li>
           <li>Improve ROM identification, artwork recovery, library review, and console-aware launch selection.</li>
         </ul>
       </description>
