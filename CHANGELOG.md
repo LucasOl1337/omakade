@@ -1,12 +1,144 @@
 # Changelog
 
-## Unreleased
+## 1.9.2
 
-- Share QML role-name definitions across nine game models without changing
-  their role IDs, names, or behavior.
+- Add an optional ProtonDB tier badge on library cards, off by default. Turn on both
+  community reports and card badges in Settings to see the tier beside playtime and
+  rating. Fixes #39.
+
+## 1.9.1
+
+This patch fixes RomM catalog refresh for large libraries.
+
+- Ask RomM to omit the result-set index and filter data it repeats on every page
+  by default, which is what pushed large catalogs past the response limit.
+- Raise the whole-refresh total while keeping each page bounded in memory, so
+  libraries with tens of thousands of entries finish loading. A failed refresh
+  still keeps the existing offline catalog.
+
+Fixes #46.
+
+## 1.9.0
+
+- Connect an optional read-only RomM library with secure credentials, locally mounted
+  games, and a catalog that remains available offline.
+- Save per-installation emulator/core choices, inspect launch diagnostics, and repair
+  missing paths. Keep explicit choices consistent across launch entry points.
+- Protect supported emulator saves before launch, including memory cards and clock data.
+  Restore and undo with shared-storage warnings and interrupted-restore recovery.
+- Review save coverage, configure custom file layouts and retention, and preview backup
+  cleanup. Refresh the selected backup list after automatic capture.
+- Work through a persistent library repair queue with source/reason filters, selected
+  retries, and separate identity and artwork undo.
+- Improve ROM identification and artwork recovery while preserving manual choices,
+  editions, and edits in searches. Prevent cached cover loading loops.
+- Keep archive entries on RetroArch and report missing archives, cores, or runtimes
+  without silently replacing a selected setup.
+- Add optional ProtonDB community reports in Steam game details, with report counts
+  and cache dates. Keep library captions uncluttered and launching independent of the service.
+- Recognize Cemu `.wua` games in session recording.
+- Clarify empty library views, source errors, and repository versus direct package installs.
+
+## 1.8.0
+
+- Add optional Home, persistent Up Next, and suggestions from the local library.
+  Improve Home wheel scrolling during background metadata updates.
+  Put game shelves before shortcuts and add direct Play beside Details.
+- Filter by genre, decade, and platform, including saved filters.
+- Show regional release dates, title evidence, genres, credits, and descriptions.
+  Preserve manual identity choices and leave ambiguous matches correctable.
+- Bring matching and cover selection together under Game & Artwork. Preserve
+  existing portraits during refresh and cache maintenance, and recover covers
+  through verified aliases. Keep Done visible while the panel scrolls.
+- Prevent overlapping desktop library captions after returning from a game.
+  Keep existing cards stable during unchanged startup console scans.
+- Improve popup keyboard navigation, controller focus, and narrow details layouts.
+  Restore the original Home action after closing details. Show immediate launch
+  feedback, suppress repeated presses briefly, and keep launch errors visible.
+  Limit the rating-count tooltip to the rating and put credits before regional details.
+- Add optional local session recording for configured emulator process profiles.
+  Show recorder status and separate imported time from recorded time. New installs
+  opt in; existing recording preferences and history are preserved.
+  Attribution requires a recognizable game path in process arguments. Internal
+  emulator game changes and wrapper handoffs still need adapter-specific testing.
+- Back up explicit metadata choices, recorded sessions, baselines, and preferences
+  in archive format 2. Format 1 remains readable. Emulator saves are excluded.
+- Report persistence failures and protect referenced artwork during cache cleanup.
+- Keep ROM Folders on the Sources overview. Fixes #40.
+
+## 1.7.0
+
+Omakade 1.7 brings console libraries, more ways to organize your games, and a
+reworked controller keyboard.
+
+### Console libraries
+
+- Discover Dolphin, Cemu, and shadPS4 games alongside existing sources. Launch
+  Dreamcast games through Flycast and scan ROM folders and EmuDeck layouts.
+- Browse console cards or individual games, pin games outside their console
+  card, and choose a layout for each system.
+- Read titles and icons from supported Switch dumps using locally installed
+  keys, and artwork from Wii U archives. Filter out Switch updates and DLC.
+
+### Artwork and settings
+
+- Identify games with IGDB, display ratings, and sort by rating or popularity.
+  Matching handles common region, revision, and translation tags in ROM names.
+- Add optional SteamGridDB portrait covers, or choose your own cover, hero,
+  and logo images. Each artwork slot can be reset separately.
+- Browse settings by Sources, Library, Connections, Controls & streaming, and
+  About & storage. Adjust desktop and couch cover sizes independently.
+
+### Organization and backups
+
+- Add native games and desktop entries with custom arguments and a working
+  directory. Removing an entry leaves its game files alone.
+- Choose a preferred installation for linked games and add extra GOG folders.
+- Bulk-edit games, save named filters, and pick a random game from your results.
+- Export personal library settings and artwork to a local backup. Preview,
+  merge, or replace data, with recovery and undo for interrupted restores.
+- Preserve console pins and favorite/hidden choices for the new emulator sources
+  in backups.
+
+### Controller and reliability fixes
+
+- Use a QWERTY on-screen keyboard with A to select, B to cancel, X to delete,
+  Y for space, and Start to finish. Confirm stays on the bottom face button,
+  including controllers connected in Switch mode.
+- Reach search and text fields with a controller, keep keyboard input inside
+  its dialog, and return to the field after editing.
+- Keep focus on Show, Source, and View while changing them. Source cycles through
+  choices; Filters opens the full filter panel.
+- Fix details-page navigation back to the title, status alignment, clipped
+  collection controls, and narrow-window editor and settings layouts.
+- Fix disappearing filtered libraries and preserve cached Dolphin and Cemu games
+  when their configuration cannot be read.
+- Track manually added games through launch and exit. Request Wayland idle
+  inhibition while a tracked game process is running.
+- Handle unavailable crypto when reading Switch artwork.
+
+### Upgrading
+
+Existing IGDB credentials carry over. SteamGridDB requires its own optional API
+key in Settings → Connections. Use Update Ratings & Portraits to fetch metadata.
+
+Backups containing the new console-pin data may not open in older Omakade
+versions. Keep an older backup if you plan to downgrade.
+
+## 1.6.1
+
+- Launch, manage, and install Steam games through the Steam client itself,
+  native first and then Flatpak, and only fall back to the desktop `steam://`
+  URL handler when neither is available. Steam packages that register no
+  handler sent Play to the web browser. Thanks @radiohost-cloud for the report
+  and the Apple Silicon test.
+- Stop matching the Omakade desktop entry when searching for "Steam" or
+  "RetroArch" in the app launcher. Thanks @gmickel for the report.
 - Remember the library sort order between launches.
 - Show every game's cover at the same compact size on the details screen
   instead of letting portrait covers render larger than landscape ones.
+- Share QML role-name definitions across nine game models without changing
+  their role IDs, names, or behavior.
 
 ## 1.6.0
 

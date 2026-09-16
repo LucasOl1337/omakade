@@ -1,5 +1,6 @@
 #include "library/FaugusGameModel.h"
 
+#include "library/DatabaseTuning.h"
 #include "library/GameRoles.h"
 
 #include <QCryptographicHash>
@@ -124,7 +125,7 @@ bool FaugusGameModel::openDatabase(const QString& path) {
   }
   m_database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connectionName);
   m_database.setDatabaseName(path);
-  if (!m_database.open()) {
+  if (!openTunedDatabase(m_database)) {
     setStatus(QStringLiteral("Faugus cache unavailable"), m_database.lastError().text());
     return false;
   }
@@ -258,6 +259,8 @@ QVariant FaugusGameModel::valueForRole(const Game& game, int role) const {
                                         : QStringLiteral("Faugus · %1").arg(game.faugus.runner);
   case GameRoles::Description:
     return QStringLiteral("Configured and managed by Faugus.");
+  case GameRoles::PlaytimeSeconds:
+    return qint64(game.faugus.playtimeSeconds);
   case GameRoles::Hours:
     return game.faugus.playtimeSeconds / 3600;
   case GameRoles::Progress:

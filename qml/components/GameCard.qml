@@ -7,6 +7,10 @@ FocusScope {
     required property string title
     required property string subtitle
     required property int hours
+    property string playtimeText: hours + "h"
+    // IGDB score out of 100. Below zero means this game has no rating, and the card
+    // then shows nothing rather than a placeholder.
+    required property int rating
     required property int progress
     required property bool favorite
     required property string completionStatus
@@ -14,7 +18,16 @@ FocusScope {
     required property color accentEnd
     required property string coverMark
     required property string coverPath
+    property string gameSource: ""
+    property string appId: ""
     property bool current: false
+    // The grid sets this to whether the card intersects the visible viewport, so
+    // cached offscreen delegates do not queue ProtonDB requests.
+    property bool inViewport: true
+    // Opt-in only: the library stays uncluttered unless both reports and card badges
+    // are enabled in settings.
+    readonly property bool protonBadgesShown:
+        Preferences.protonDbEnabled && Preferences.protonDbBadges
 
     signal activated()
     signal favoriteToggled()
@@ -25,7 +38,8 @@ FocusScope {
 
     activeFocusOnTab: true
     Accessible.name: title
-    Accessible.description: subtitle + ", " + hours + " hours played"
+    Accessible.description: subtitle + ", " + playtimeText + " played"
+                            + (rating >= 0 ? ", rated " + rating + " out of 100" : "")
     Accessible.role: Accessible.ListItem
 
     Keys.onReturnPressed: function(event) {
@@ -89,22 +103,10 @@ FocusScope {
             GradientStop { position: 1.0; color: root.accentEnd }
         }
 
-        Image {
+        CoverArtwork {
             id: artwork
             anchors.fill: parent
             source: root.coverPath
-            asynchronous: true
-            cache: false
-            fillMode: Image.PreserveAspectCrop
-            // Round the decode size up to 64px steps so window resizes and tiling changes do
-            // not reload every visible cover on each step.
-            sourceSize.width: Math.ceil(width * Math.max(1, Screen.devicePixelRatio) / 64) * 64
-            sourceSize.height: Math.ceil(height * Math.max(1, Screen.devicePixelRatio) / 64) * 64
-            opacity: status === Image.Ready ? 1 : 0
-            Behavior on opacity {
-                enabled: !Preferences.reducedMotion
-                NumberAnimation { duration: 160 }
-            }
         }
 
         Rectangle {
@@ -138,7 +140,10 @@ FocusScope {
             font.weight: Font.Light
         }
 
+        // The caption under the card already names the game; the overlay only
+        // labels cards that have no cover art to show.
         Rectangle {
+            visible: artwork.status !== Image.Ready
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -150,6 +155,7 @@ FocusScope {
         }
 
         Column {
+            visible: artwork.status !== Image.Ready
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -238,6 +244,7 @@ FocusScope {
     }
 
     Column {
+        objectName: "cardCaption"
         anchors.top: cover.bottom
         anchors.topMargin: 10
         anchors.left: parent.left
@@ -257,13 +264,24 @@ FocusScope {
         }
 
         Row {
+            id: metaRow
             width: parent.width
             spacing: 7
+            // The source name gives up whatever room the fixed trailing fields need, so a long
+            // name elides instead of pushing the playtime or the rating off the card.
+            readonly property real baseTrailingWidth:
+                subtitleDot.width + subtitleHours.width + spacing * 2
+                + (subtitleRating.visible
+                   ? subtitleRatingDot.width + subtitleRating.width + spacing * 2 : 0)
+            // The badge only joins the line when the card is wide enough to fit it
+            // beside the source, playtime, and rating without spilling off the edge.
+            readonly property real trailingWidth:
+                baseTrailingWidth
+                + (protonBadge.visible
+                   ? protonBadgeDot.width + protonBadge.width + spacing * 2 : 0)
 
             Text {
-                width: Math.min(implicitWidth, Math.max(0, parent.width - subtitleDot.width
-                                                            - subtitleHours.width
-                                                            - parent.spacing * 2))
+                width: Math.min(implicitWidth, Math.max(0, parent.width - metaRow.trailingWidth))
                 elide: Text.ElideRight
                 text: root.subtitle
                 color: Theme.mutedText
@@ -278,12 +296,52 @@ FocusScope {
             }
             Text {
                 id: subtitleHours
-                text: root.hours + "h"
+                text: root.playtimeText
                 color: Theme.mutedText
                 font.family: Theme.fontFamily
                 font.pixelSize: 10
             }
+            Text {
+                id: subtitleRatingDot
+                visible: subtitleRating.visible
+                text: "·"
+                color: root.alpha(Theme.foreground, 0.32)
+                font.pixelSize: 10
+            }
+            Text {
+                id: subtitleRating
+                objectName: "cardRating"
+                visible: root.rating >= 0
+                text: root.rating + "%"
+                // Brighter than the rest of the line, so a rating-sorted grid can be read
+                // down the column at a glance.
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pixelSize: 10
+                font.weight: Font.DemiBold
+            }
+            Text {
+                id: protonBadgeDot
+                visible: protonBadge.visible
+                text: "·"
+                color: root.alpha(Theme.foreground, 0.32)
+                font.pixelSize: 10
+            }
+            ProtonDbBadge {
+                id: protonBadge
+                objectName: "cardProtonBadge"
+                compact: true
+                show: root.protonBadgesShown
+                      && (metaRow.width - metaRow.baseTrailingWidth)
+                         >= (protonBadgeDot.width + protonBadge.implicitWidth
+                             + metaRow.spacing * 2)
+                gameSource: root.gameSource
+                appId: root.appId
+                // Only queue reports for cards that are actually in the viewport.
+                fetchEnabled: root.protonBadgesShown && root.inViewport
+            }
         }
+
     }
 
     MouseArea {

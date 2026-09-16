@@ -37,6 +37,7 @@ jobs:
           appstream arch-audit base-devel cmake desktop-file-utils git github-cli
           jq libsecret libzip ninja pacman-contrib pkgconf python qt6-base
           qt6-declarative qt6-imageformats qt6-svg qt6-wayland sdl3 ttf-dejavu
+          wayland wayland-protocols
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
@@ -130,6 +131,9 @@ jobs:
           jq . /tmp/omakade-vulnerabilities.json
           test "$(jq length /tmp/omakade-vulnerabilities.json)" -eq 0
       - name: Scan package SBOM
+        # Arch advisories are a baseline for ARM64, not complete Arch Linux ARM coverage.
+        env:
+          GRYPE_DISTRO: arch:rolling
         uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
           sbom: omakade-${{ env.VERSION }}-${{ matrix.arch }}.spdx.json

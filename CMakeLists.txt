@@ -1,11 +1,46 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(Omakade VERSION 1.6.0 LANGUAGES CXX)
+project(Omakade VERSION 1.9.2 LANGUAGES C CXX)
 
 find_package(PkgConfig REQUIRED)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto)
 pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3)
+pkg_check_modules(LIBZSTD REQUIRED IMPORTED_TARGET libzstd)
 pkg_check_modules(LIBSECRET REQUIRED IMPORTED_TARGET libsecret-1)
 pkg_check_modules(LIBZIP REQUIRED IMPORTED_TARGET libzip)
+
+# Wayland idle-inhibit keeps the screensaver away while a launched game runs. Optional so the
+# build still works without Wayland headers; the inhibitor becomes a no-op in that case.
+pkg_check_modules(WAYLAND_CLIENT IMPORTED_TARGET wayland-client)
+pkg_check_modules(WAYLAND_PROTOCOLS wayland-protocols)
+find_program(WAYLAND_SCANNER wayland-scanner)
+set(OMAKADE_IDLE_INHIBIT OFF)
+if(WAYLAND_CLIENT_FOUND AND WAYLAND_PROTOCOLS_FOUND AND WAYLAND_SCANNER)
+  pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+  set(OMAKADE_IDLE_INHIBIT_XML
+    "${WAYLAND_PROTOCOLS_DIR}/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml")
+  if(EXISTS "${OMAKADE_IDLE_INHIBIT_XML}")
+    set(OMAKADE_IDLE_INHIBIT ON)
+    set(OMAKADE_PROTOCOL_DIR "${CMAKE_CURRENT_BINARY_DIR}/wayland-protocols")
+    file(MAKE_DIRECTORY "${OMAKADE_PROTOCOL_DIR}")
+    set(OMAKADE_IDLE_INHIBIT_HEADER
+      "${OMAKADE_PROTOCOL_DIR}/idle-inhibit-unstable-v1-client-protocol.h")
+    set(OMAKADE_IDLE_INHIBIT_SOURCE "${OMAKADE_PROTOCOL_DIR}/idle-inhibit-unstable-v1-protocol.c")
+    add_custom_command(
+      OUTPUT "${OMAKADE_IDLE_INHIBIT_HEADER}"
+      COMMAND "${WAYLAND_SCANNER}" client-header "${OMAKADE_IDLE_INHIBIT_XML}"
+              "${OMAKADE_IDLE_INHIBIT_HEADER}"
+      DEPENDS "${OMAKADE_IDLE_INHIBIT_XML}"
+      VERBATIM)
+    add_custom_command(
+      OUTPUT "${OMAKADE_IDLE_INHIBIT_SOURCE}"
+      COMMAND "${WAYLAND_SCANNER}" private-code "${OMAKADE_IDLE_INHIBIT_XML}"
+              "${OMAKADE_IDLE_INHIBIT_SOURCE}"
+      DEPENDS "${OMAKADE_IDLE_INHIBIT_XML}"
+      VERBATIM)
+  endif()
+endif()
+message(STATUS "Wayland idle-inhibit: ${OMAKADE_IDLE_INHIBIT}")
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -14,9 +49,71 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Concurrent Core Gui Network Qml Quick QuickControls2 Sql Test)
+# GuiPrivate exposes the Wayland window native interface used by the idle inhibitor.
+find_package(Qt6 6.8 OPTIONAL_COMPONENTS GuiPrivate)
+if(OMAKADE_IDLE_INHIBIT AND NOT TARGET Qt6::GuiPrivate)
+  message(STATUS "Qt6::GuiPrivate is unavailable; disabling Wayland idle-inhibit")
+  set(OMAKADE_IDLE_INHIBIT OFF)
+endif()
 qt_standard_project_setup(REQUIRES 6.8)
 
+# Play session tracking, shared by the Omakade window and the omakade-sessiond
+# recorder. Kept separate so the daemon links only Qt Core, Sql, and Network.
+add_library(omakade_tracking STATIC
+  src/tracking/AppNotify.cpp
+  src/tracking/AppNotify.h
+  src/tracking/PlaySessionStore.cpp
+  src/tracking/PlaySessionStore.h
+  src/tracking/ProcFs.cpp
+  src/tracking/ProcFs.h
+  src/tracking/ProcessMatcher.cpp
+  src/tracking/ProcessMatcher.h
+  src/tracking/SessionDatabase.cpp
+  src/tracking/SessionDatabase.h
+  src/tracking/SessionRecorder.cpp
+  src/tracking/SessionRecorder.h
+)
+
+target_include_directories(omakade_tracking PUBLIC src)
+target_link_libraries(omakade_tracking PUBLIC
+  Qt6::Core
+  Qt6::Network
+  Qt6::Sql
+)
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(omakade_tracking PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
+qt_add_executable(omakade-sessiond src/sessiond/main.cpp)
+target_compile_definitions(omakade-sessiond PRIVATE
+  OMAKADE_SESSIOND_PROFILES="${CMAKE_INSTALL_FULL_DATADIR}/omakade/sessiond-profiles.json"
+)
+target_link_libraries(omakade-sessiond PRIVATE omakade_tracking)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(omakade-sessiond PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+
 add_library(omakade_core STATIC
+  src/backup/BackupArchive.cpp
+  src/backup/BackupArchive.h
+  src/backup/BackupSnapshot.cpp
+  src/backup/BackupSnapshot.h
+  src/backup/BackupDatabase.cpp
+  src/backup/BackupDatabase.h
+  src/backup/BackupRecovery.cpp
+  src/backup/BackupRecovery.h
+  src/saves/SaveManagement.cpp
+  src/saves/SaveProtection.cpp
+  src/saves/SaveProtection.h
+  src/saves/SaveBackups.cpp
+  src/saves/SaveSetStore.cpp
+  src/saves/SaveLayouts.cpp
+  src/saves/SaveBackups.h
+  src/backup/BackupManager.cpp
+  src/backup/BackupManager.h
+  src/backup/BackupStartup.cpp
+  src/backup/BackupStartup.h
   src/achievements/AchievementModel.cpp
   src/achievements/AchievementModel.h
   src/achievements/RetroAchievementsApi.cpp
@@ -33,13 +130,22 @@ add_library(omakade_core STATIC
   src/app/AppSettings.h
   src/app/SingleInstance.cpp
   src/app/SingleInstance.h
+  src/input/ControllerFocusGuard.cpp
+  src/input/ControllerFocusGuard.h
   src/input/ControllerInput.cpp
   src/input/ControllerInput.h
   src/input/CouchCursorManager.cpp
   src/input/CouchCursorManager.h
+  src/library/HomeModel.cpp
+  src/library/HomeModel.h
   src/library/LibraryFilterModel.cpp
   src/library/LibraryFilterModel.h
+  src/library/DatabaseTuning.h
   src/library/GameRoles.h
+  src/library/ConsoleCatalog.cpp
+  src/library/ConsoleCatalog.h
+  src/library/ConsolePortalModel.cpp
+  src/library/ConsolePortalModel.h
   src/library/BattleNetGameModel.cpp
   src/library/BattleNetGameModel.h
   src/library/FaugusGameModel.cpp
@@ -54,6 +160,15 @@ add_library(omakade_core STATIC
   src/library/Pcsx2GameModel.h
   src/library/RyujinxGameModel.cpp
   src/library/RyujinxGameModel.h
+  src/library/Shadps4GameModel.cpp
+  src/library/Shadps4GameModel.h
+  src/library/RommGameModel.cpp
+  src/library/RommGameModel.h
+  src/library/CemuGameModel.cpp
+  src/library/CemuGameModel.h
+  src/library/ManualGameModel.cpp
+  src/library/ManualGameModel.h
+  src/library/PersonalDataRules.h
   src/library/MockGameModel.cpp
   src/library/MockGameModel.h
   src/library/SteamGameModel.cpp
@@ -61,13 +176,27 @@ add_library(omakade_core STATIC
   src/library/SteamOwnedGamesApi.cpp
   src/library/SteamOwnedGamesApi.h
   src/library/UnifiedGameModel.cpp
+    src/library/LibraryRepair.cpp
+    src/library/ReviewUndo.cpp
   src/library/UnifiedGameModel.h
+  src/sources/romm/RommCredentials.cpp
+  src/sources/romm/RommCredentials.h
+  src/sources/romm/RommCatalog.cpp
+  src/sources/romm/RommCatalog.h
+  src/sources/romm/RommScanner.cpp
+  src/sources/romm/RommScanner.h
+  src/launch/GameLaunchSetup.cpp
   src/launch/GameLauncher.cpp
   src/launch/GameLauncher.h
+  src/launch/LaunchCommand.h
   src/launch/PlayRequest.cpp
   src/launch/PlayRequest.h
   src/launch/SteamLauncher.cpp
   src/launch/SteamLauncher.h
+  src/metadata/ProtonDbService.cpp
+  src/metadata/ProtonDbService.h
+  src/metadata/GameMetadata.cpp
+  src/metadata/GameMetadata.h
   src/metadata/IgdbApi.cpp
   src/metadata/IgdbApi.h
   src/metadata/GameInsightsService.cpp
@@ -81,10 +210,28 @@ add_library(omakade_core STATIC
   src/sources/lutris/LutrisScanner.h
   src/sources/retroarch/RetroArchScanner.cpp
   src/sources/retroarch/RetroArchScanner.h
+  src/sources/retro/RomFolderScanner.cpp
+  src/sources/retro/RomFolderScanner.h
   src/sources/pcsx2/Pcsx2Scanner.cpp
   src/sources/pcsx2/Pcsx2Scanner.h
   src/sources/ryujinx/RyujinxScanner.cpp
   src/sources/ryujinx/RyujinxScanner.h
+  src/sources/shadps4/Shadps4Scanner.cpp
+  src/sources/shadps4/Shadps4Scanner.h
+  src/sources/cemu/CemuScanner.cpp
+  src/sources/cemu/CemuScanner.h
+  src/sources/dolphin/DolphinScanner.cpp
+  src/sources/dolphin/DolphinScanner.h
+  src/library/DolphinGameModel.cpp
+  src/library/DolphinGameModel.h
+  src/artwork/SwitchTitleReader.cpp
+  src/artwork/SwitchTitleReader.h
+  src/artwork/ZArchiveReader.cpp
+  src/artwork/ZArchiveReader.h
+  src/artwork/TgaImage.cpp
+  src/artwork/TgaImage.h
+  src/artwork/CoverImageProvider.cpp
+  src/artwork/CoverImageProvider.h
   src/sources/heroic/HeroicScanner.cpp
   src/sources/heroic/HeroicScanner.h
   src/sources/faugus/FaugusScanner.cpp
@@ -99,9 +246,13 @@ add_library(omakade_core STATIC
 
 target_include_directories(omakade_core PUBLIC src)
 target_link_libraries(omakade_core PUBLIC
+  omakade_tracking
+  Qt6::Quick
   PkgConfig::SDL3
   PkgConfig::LIBSECRET
   PkgConfig::LIBZIP
+  PkgConfig::LIBZSTD
+  OpenSSL::Crypto
   Qt6::Concurrent
   Qt6::Core
   Qt6::Gui
@@ -115,19 +266,56 @@ endif()
 
 qt_add_executable(omakade
   src/app/main.cpp
+  src/app/IdleInhibitor.cpp
+  src/app/IdleInhibitor.h
 )
+if(OMAKADE_IDLE_INHIBIT)
+  target_sources(omakade PRIVATE "${OMAKADE_IDLE_INHIBIT_HEADER}" "${OMAKADE_IDLE_INHIBIT_SOURCE}")
+  set_source_files_properties("${OMAKADE_IDLE_INHIBIT_SOURCE}" PROPERTIES
+    COMPILE_OPTIONS "-w")
+  target_include_directories(omakade PRIVATE "${OMAKADE_PROTOCOL_DIR}")
+  target_compile_definitions(omakade PRIVATE OMAKADE_IDLE_INHIBIT=1)
+  target_link_libraries(omakade PRIVATE PkgConfig::WAYLAND_CLIENT Qt6::GuiPrivate)
+endif()
+
+# A pragma Singleton file is only registered as one when CMake says so, and this has to be set
+# before the module is declared. Without it the type resolves to nothing and every binding on it
+# quietly evaluates to undefined.
+set_source_files_properties(qml/components/TextEntry.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(omakade
   URI Omakade
   VERSION 1.0
   QML_FILES
     qml/Main.qml
+    qml/components/TextEntry.qml
+  qml/components/FieldClearButton.qml
+  qml/components/CoverSizeControl.qml
+    qml/components/CoverArtwork.qml
+    qml/components/SaveProtectionPanel.qml
+    qml/components/SaveBackupMenu.qml
+    qml/components/LaunchSetupPanel.qml
+    qml/components/LibraryRepairPanel.qml
+    qml/components/RommSettings.qml
+    qml/components/LaunchFeedback.qml
+    qml/components/ProtonDbBadge.qml
     qml/components/GameCard.qml
     qml/components/CouchLibraryView.qml
     qml/components/CouchKeyboard.qml
     qml/components/CouchBrowsePanel.qml
+    qml/components/GameMetadataEditor.qml
+    qml/components/SettingsPanel.qml
     qml/components/GlassButton.qml
+    qml/components/ActionMenu.qml
+    qml/components/MenuAction.qml
     qml/components/LibraryView.qml
+    qml/screens/ArtworkEditor.qml
+    qml/screens/RestoreStartup.qml
+    qml/screens/BackupEditor.qml
+    qml/screens/SavedFiltersEditor.qml
+    qml/screens/BulkOrganizationEditor.qml
+    qml/screens/ManualGameEditor.qml
+    qml/screens/HomeScreen.qml
     qml/screens/GameDetails.qml
 )
 
@@ -135,6 +323,18 @@ qt_add_resources(omakade "omakade_icons"
   PREFIX "/icons"
   FILES
     resources/icons/io.github.tsouth89.Omakade.svg
+)
+
+# Console card art: any PNG, JPG, or SVG dropped into resources/consoles named
+# after a ConsoleCatalog id (snes.png, n64.svg, ...) is bundled automatically.
+file(GLOB OMAKADE_CONSOLE_ART CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/consoles/*.png"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/consoles/*.jpg"
+  "${CMAKE_CURRENT_SOURCE_DIR}/resources/consoles/*.svg")
+qt_add_resources(omakade "omakade_consoles"
+  PREFIX "/consoles"
+  BASE "resources/consoles"
+  FILES ${OMAKADE_CONSOLE_ART}
 )
 
 set_target_properties(omakade PROPERTIES
@@ -164,6 +364,15 @@ install(TARGETS omakade
   BUNDLE DESTINATION .
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
+install(TARGETS omakade-sessiond
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+install(FILES resources/sessiond-profiles.json
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/omakade
+)
+install(FILES packaging/omakade-sessiond.service
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/systemd/user
+)
 install(FILES packaging/io.github.tsouth89.Omakade.desktop
   DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
@@ -176,6 +385,9 @@ install(FILES packaging/io.github.tsouth89.Omakade.metainfo.xml
 install(FILES LICENSE COPYRIGHT
   DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/omakade
 )
+install(FILES resources/consoles/ARTWORK.md resources/consoles/GENERATION.json
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/omakade
+)
 install(FILES README.md PRIVACY.md SUPPORT.md CHANGELOG.md docs/COMPATIBILITY.md
   DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade
 )
@@ -185,6 +397,10 @@ install(DIRECTORY skills/omakade-tv-gaming
   PATTERN "*.py" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
     GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
   PATTERN "__pycache__" EXCLUDE
+)
+
+install(FILES docs/RECORDING-COVERAGE.md
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/doc/omakade/docs
 )
 
 include(CTest)

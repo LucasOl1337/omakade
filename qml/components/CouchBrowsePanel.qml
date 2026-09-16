@@ -9,18 +9,25 @@ FocusScope {
     property int categoryIndex: 0
     property var optionModel: []
     readonly property var categories: [
+        { label: "SOURCE", kind: "source" },
         { label: "LIBRARY VIEW", kind: "mode" },
         { label: "SORT ORDER", kind: "sort" },
         { label: "AVAILABILITY", kind: "availability" },
-        { label: "SOURCE", kind: "source" },
+        { label: "CONSOLES", kind: "consoles" },
         { label: "STATUS", kind: "status" },
         { label: "COLLECTION", kind: "collection" },
-        { label: "TAG", kind: "tag" }
+        { label: "TAG", kind: "tag" },
+        { label: "GENRE", kind: "genre" },
+        { label: "RELEASE DECADE", kind: "decade" },
+        { label: "PLATFORM", kind: "platform" }
     ]
     readonly property real uiScale: Math.max(1, Math.min(2,
                                                          Math.min(width / 1920,
                                                                   height / 1080)))
 
+    signal organizeRequested()
+    signal savedFiltersRequested()
+    signal randomRequested()
     signal closed()
     signal filtersChanged()
 
@@ -44,7 +51,9 @@ FocusScope {
             return [
                 { label: "TITLE", value: 0 },
                 { label: "RECENTLY PLAYED", value: 1 },
-                { label: "PLAYTIME", value: 2 }
+                { label: "PLAYTIME", value: 2 },
+                { label: "IGDB RATING", value: 3 },
+                { label: "POPULARITY (IGDB VISITS)", value: 4 }
             ]
         }
         if (kind === "availability") {
@@ -57,6 +66,13 @@ FocusScope {
         if (kind === "source") {
             return sourceOptions
         }
+        if (kind === "consoles") {
+            // All systems follow this view unless explicitly overridden in Settings.
+            return [
+                { label: "CONSOLE CARDS", value: false },
+                { label: "CONSOLE GAMES SHOWN", value: true }
+            ]
+        }
         if (kind === "status") {
             return [
                 { label: "ANY STATUS", value: "" },
@@ -67,8 +83,11 @@ FocusScope {
             ]
         }
         const names = kind === "collection" ? libraryModel.collectionNames
-                                             : libraryModel.tagNames
-        const values = [{ label: kind === "collection" ? "ANY COLLECTION" : "ANY TAG",
+                    : kind === "genre" ? libraryModel.genreNames
+                    : kind === "decade" ? libraryModel.decadeNames
+                    : kind === "platform" ? libraryModel.platformNames
+                    : libraryModel.tagNames
+        const values = [{ label: "ANY " + kind.toUpperCase(),
                           value: "" }]
         for (let index = 0; index < names.length; ++index) {
             values.push({ label: names[index].toUpperCase(), value: names[index] })
@@ -87,8 +106,12 @@ FocusScope {
                             : kind === "sort" ? libraryModel.sortMode
                             : kind === "availability" ? libraryModel.availability
                             : kind === "source" ? libraryModel.sourceFilter
+                            : kind === "consoles" ? libraryModel.expandConsoles
                             : kind === "status" ? libraryModel.completionFilter
                             : kind === "collection" ? libraryModel.collectionFilter
+                            : kind === "genre" ? libraryModel.genreFilter
+                            : kind === "decade" ? libraryModel.decadeFilter
+                            : kind === "platform" ? libraryModel.platformFilter
                             : libraryModel.tagFilter
         for (let index = 0; index < optionModel.length; ++index) {
             if (optionModel[index].value === selectedValue) {
@@ -102,9 +125,15 @@ FocusScope {
         return kind === "mode" ? libraryModel.mode === value
              : kind === "sort" ? libraryModel.sortMode === value
              : kind === "availability" ? libraryModel.availability === value
-             : kind === "source" ? libraryModel.sourceFilter === value
+             : kind === "source" ? (value === "" ? libraryModel.sourceFilters.length === 0
+                   : value === "Emulated" ? libraryModel.emulatorSources.every(source => libraryModel.sourceFilters.indexOf(source) >= 0)
+                   : libraryModel.sourceFilters.indexOf(value) >= 0)
+             : kind === "consoles" ? libraryModel.expandConsoles === value
              : kind === "status" ? libraryModel.completionFilter === value
              : kind === "collection" ? libraryModel.collectionFilter === value
+             : kind === "genre" ? libraryModel.genreFilter === value
+             : kind === "decade" ? libraryModel.decadeFilter === value
+             : kind === "platform" ? libraryModel.platformFilter === value
              : libraryModel.tagFilter === value
     }
 
@@ -118,20 +147,48 @@ FocusScope {
         else if (kind === "sort") libraryModel.sortMode = value
         else if (kind === "availability") libraryModel.availability = value
         else if (kind === "source") libraryModel.sourceFilter = value
+        else if (kind === "consoles") libraryModel.expandConsoles = value
         else if (kind === "status") libraryModel.completionFilter = value
         else if (kind === "collection") libraryModel.collectionFilter = value
+        else if (kind === "genre") libraryModel.genreFilter = value
+        else if (kind === "decade") libraryModel.decadeFilter = value
+        else if (kind === "platform") libraryModel.platformFilter = value
         else libraryModel.tagFilter = value
         filtersChanged()
     }
 
+    function clearContextFilters() {
+        libraryModel.availability = 0
+        libraryModel.completionFilter = ""; libraryModel.collectionFilter = ""; libraryModel.tagFilter = ""
+        libraryModel.genreFilter = ""; libraryModel.decadeFilter = ""; libraryModel.platformFilter = ""
+        filtersChanged(); rebuildOptions()
+    }
+    function toggleSourceOption(index) {
+        if (categories[categoryIndex].kind !== "source" || index < 0 || index >= optionModel.length) return
+        const value = optionModel[index].value
+        if (value === "") libraryModel.sourceFilters = []
+        else if (value === "Emulated") libraryModel.toggleSources(libraryModel.emulatorSources)
+        else libraryModel.toggleSource(value)
+        filtersChanged()
+    }
+    Connections {
+        target: Controller
+        function onFavoriteRequested() {
+            if (root.visible && optionList.activeFocus) root.toggleSourceOption(optionList.currentIndex)
+        }
+    }
     function clearFilters() {
         libraryModel.mode = 0
         libraryModel.sortMode = 0
         libraryModel.availability = 0
         libraryModel.sourceFilter = ""
+        libraryModel.consoleFilter = ""
         libraryModel.completionFilter = ""
         libraryModel.collectionFilter = ""
         libraryModel.tagFilter = ""
+        libraryModel.genreFilter = ""
+        libraryModel.decadeFilter = ""
+        libraryModel.platformFilter = ""
         libraryModel.searchText = ""
         filtersChanged()
         rebuildOptions()
@@ -143,10 +200,15 @@ FocusScope {
     }
 
     onCategoryIndexChanged: rebuildOptions()
+    onSourceOptionsChanged: if (categories[categoryIndex].kind === "source") rebuildOptions()
 
     Connections {
         target: root.libraryModel
+        function onMetadataOptionsChanged() { root.rebuildOptions() }
         function onOrganizationNamesChanged() { root.rebuildOptions() }
+        function onSourceFilterChanged() {
+            if (root.categories[root.categoryIndex].kind === "source") root.rebuildOptions()
+        }
     }
 
     Rectangle {
@@ -163,7 +225,7 @@ FocusScope {
         anchors.bottomMargin: 44 * root.uiScale
         spacing: 24 * root.uiScale
 
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth: true
 
             ColumnLayout {
@@ -184,9 +246,41 @@ FocusScope {
                 }
             }
 
+            Flow {
+                Layout.fillWidth: true
+                spacing: 8
+            GlassButton {
+                id: organizeButton
+                text: "ORGANIZE"
+                displayScale: root.uiScale
+                KeyNavigation.right: savedButton
+                KeyNavigation.down: categoryList
+                onClicked: root.organizeRequested()
+            }
+            GlassButton {
+                id: savedButton
+                KeyNavigation.left: organizeButton
+                objectName: "couchSavedFiltersButton"
+                text: "SAVED FILTERS"
+                displayScale: root.uiScale
+                KeyNavigation.right: randomButton
+                KeyNavigation.down: categoryList
+                onClicked: root.savedFiltersRequested()
+            }
+            GlassButton {
+                id: randomButton
+                KeyNavigation.left: savedButton
+                objectName: "couchRandomGameButton"
+                KeyNavigation.right: clearButton
+                KeyNavigation.down: categoryList
+                text: "PICK A GAME"
+                displayScale: root.uiScale
+                onClicked: root.randomRequested()
+            }
             GlassButton {
                 id: clearButton
-                text: "CLEAR ALL"
+                KeyNavigation.left: randomButton
+                text: "RESET BROWSING"
                 onClicked: root.clearFilters()
                 KeyNavigation.right: doneButton
                 KeyNavigation.down: categoryList
@@ -198,6 +292,11 @@ FocusScope {
                 onClicked: root.closed()
                 KeyNavigation.left: clearButton
                 KeyNavigation.down: optionList
+            }
+            GlassButton {
+                text: "CLEAR FILTERS"; compact: true
+                onClicked: root.clearContextFilters()
+            }
             }
         }
 
@@ -313,11 +412,13 @@ FocusScope {
                         }
                     }
                     Keys.onReturnPressed: function(event) {
-                        root.applyOption(currentIndex)
+                        if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) root.toggleSourceOption(currentIndex)
+                        else root.applyOption(currentIndex)
                         event.accepted = true
                     }
                     Keys.onEnterPressed: function(event) {
-                        root.applyOption(currentIndex)
+                        if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) root.toggleSourceOption(currentIndex)
+                        else root.applyOption(currentIndex)
                         event.accepted = true
                     }
 

@@ -4,10 +4,14 @@ import QtQuick.Controls
 Button {
     id: root
 
+    property real maximumLabelWidth: Infinity
     property string iconText: ""
     property bool primary: false
     property bool selected: false
     property bool compact: false
+    // Fired instead of clicked() for Shift or Ctrl clicks and Shift+Enter: the
+    // "add to selection" gesture on filter chips that combine.
+    signal secondaryClicked()
     readonly property var hostWindow: root.Window.window
     property real displayScale: hostWindow && hostWindow.couchMode
                                 ? Math.max(1, Math.min(2.4,
@@ -31,16 +35,37 @@ Button {
     // and keyboard confirm must work on every desktop, so handle both keys here.
     Keys.onReturnPressed: function(event) {
         if (enabled) {
-            clicked()
+            if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) secondaryClicked()
+            else clicked()
         }
         event.accepted = true
     }
     Keys.onEnterPressed: function(event) {
         if (enabled) {
-            clicked()
+            if (event.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) secondaryClicked()
+            else clicked()
         }
         event.accepted = true
     }
+
+    MouseArea {
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton
+        // Only modifier clicks are taken here; plain presses fall through to the button.
+        onPressed: function(mouse) {
+            mouse.accepted = root.enabled && (mouse.modifiers & (Qt.ShiftModifier | Qt.ControlModifier)) !== 0
+        }
+        onClicked: function(mouse) {
+            if (root.enabled && (mouse.modifiers & (Qt.ShiftModifier | Qt.ControlModifier))) {
+                root.forceActiveFocus(Qt.MouseFocusReason)
+                root.secondaryClicked()
+            }
+        }
+    }
+
+    ToolTip.visible: hovered && buttonLabel.truncated
+    ToolTip.text: text
+    ToolTip.delay: 500
 
     background: Rectangle {
         radius: Math.max(4, Theme.cornerRadius)
@@ -86,6 +111,9 @@ Button {
         }
 
         Text {
+            id: buttonLabel
+            width: Math.min(implicitWidth, root.maximumLabelWidth)
+            elide: Text.ElideRight
             text: root.text
             color: root.enabled ? (root.primary ? Theme.brightForeground : Theme.foreground)
                                 : root.alpha(Theme.foreground, 0.35)

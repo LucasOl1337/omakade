@@ -1,11 +1,21 @@
 #pragma once
 
 #include "sources/retroarch/RetroArchScanner.h"
+#include "tracking/PlaySessionStore.h"
 
 #include <QAbstractListModel>
 #include <QColor>
 #include <QFutureWatcher>
+#include <QHash>
+#include <QTimer>
+#include <QHash>
+#include <QNetworkAccessManager>
+#include <QQueue>
+#include <QSet>
 #include <QSqlDatabase>
+
+class AppSettings;
+class QNetworkReply;
 
 class RetroArchGameModel final : public QAbstractListModel {
   Q_OBJECT
@@ -17,7 +27,9 @@ class RetroArchGameModel final : public QAbstractListModel {
   Q_PROPERTY(bool scanning READ scanning NOTIFY statusChanged)
 
 public:
-  explicit RetroArchGameModel(const QString& databasePath, QObject* parent = nullptr);
+  explicit RetroArchGameModel(const QString& databasePath, AppSettings* settings = nullptr,
+                              PlaySessionStore* playSessions = nullptr, QObject* parent = nullptr,
+                              QNetworkAccessManager* network = nullptr);
   ~RetroArchGameModel() override;
   [[nodiscard]] int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   [[nodiscard]] QVariant data(const QModelIndex& index, int role) const override;
@@ -30,15 +42,23 @@ public:
   Q_INVOKABLE void toggleFavorite(int row);
   Q_INVOKABLE void toggleHidden(int row);
   Q_INVOKABLE void refresh();
+  Q_INVOKABLE void requestCover(const QString& appId);
   [[nodiscard]] bool scanning() const { return m_scanning; }
   Q_INVOKABLE void reloadAchievementSummary(const QString& gameId);
   void clearAchievementSummaries();
+  void setConfiguredRomFolders(const QStringList& encoded);
   void refreshFromRoots(const QStringList& roots);
+  void refreshFromSources(const QStringList& retroArchRoots, const QStringList& encodedFolders);
+  [[nodiscard]] static QString libretroCoverCachePath(const QString& gameId);
+  [[nodiscard]] static QString libretroCoverUrl(const QString& playlist, const QString& label);
+  [[nodiscard]] static QStringList coverLabelCandidates(const QString& title,
+                                                        const QString& fileBase);
 
 signals:
   void statusChanged();
 
 private:
+  friend class CoreTests;
   struct Game {
     RetroArchGameRecord retroArch;
     bool favorite = false;
@@ -48,17 +68,35 @@ private:
     QColor accentStart;
     QColor accentEnd;
   };
+  struct CoverRequest {
+    QString gameId;
+    int attempt = 0;
+  };
   bool openDatabase(const QString& path);
   bool ensureSchema();
   void loadDatabase();
+  // Takes back covers that were downloaded earlier but are no longer recorded against a game.
+  void adoptCachedCovers();
   void loadSourceState();
   void applyScan(const RetroArchScanResult& result);
   [[nodiscard]] QVariant valueForRole(const Game& game, int role) const;
   void setStatus(const QString& status, const QString& error = {});
+  void requestCoverForGame(const Game& game);
+  void startNextCoverDownloads();
+  void downloadCover(const QString& gameId, int attempt);
+  void applyCover(const QString& gameId, const QString& path);
+  // Cover paths are written to the database in one batch shortly after they arrive.
+  void flushCoverWrites();
+  QHash<QString, QString> m_pendingCoverWrites;
+  QTimer m_coverWriteTimer;
+  void pruneCoverCache();
+  [[nodiscard]] QStringList coverLabels(const Game& game) const;
 
   QVector<Game> m_games;
   QSqlDatabase m_database;
   QString m_connectionName;
+  AppSettings* m_settings = nullptr;
+  PlaySessionStore* m_playSessions = nullptr;
   bool m_retroArchDetected = false;
   QString m_statusText;
   QString m_errorText;
@@ -66,4 +104,13 @@ private:
   qint64 m_lastScan = 0;
   QFutureWatcher<RetroArchScanResult> m_scanWatcher;
   bool m_scanning = false;
+  QStringList m_configuredRomFolders;
+  QNetworkAccessManager m_ownedNetwork;
+  QNetworkAccessManager* m_network = nullptr;
+  QHash<QNetworkReply*, QByteArray> m_coverBuffers;
+  QQueue<CoverRequest> m_coverQueue;
+  QSet<QString> m_pendingCovers;
+  QSet<QString> m_failedCovers;
+  QHash<QString, qint64> m_coverRetryAfter;
+  int m_activeCoverDownloads = 0;
 };
