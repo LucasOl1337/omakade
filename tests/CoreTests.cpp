@@ -55,10 +55,12 @@
 #include "library/SteamGameModel.h"
 #include "library/SteamOwnedGamesApi.h"
 #include "library/UnifiedGameModel.h"
+#include "library/XeniaGameModel.h"
 #include "metadata/GameInsightsService.h"
 #include "metadata/IgdbApi.h"
 #include "sources/battlenet/BattleNetScanner.h"
 #include "sources/cemu/CemuScanner.h"
+#include "sources/xenia/XeniaScanner.h"
 #include "sources/dolphin/DolphinScanner.h"
 #include "sources/faugus/FaugusScanner.h"
 #include "sources/heroic/HeroicScanner.h"
@@ -322,6 +324,19 @@ auto redirectCacheHome(const QString& path) {
       qputenv("XDG_CACHE_HOME", previous);
     } else {
       qunsetenv("XDG_CACHE_HOME");
+    }
+  });
+}
+
+auto redirectPath(const QString& path) {
+  const bool wasSet = qEnvironmentVariableIsSet("PATH");
+  const QByteArray previous = qgetenv("PATH");
+  qputenv("PATH", path.toUtf8());
+  return qScopeGuard([wasSet, previous] {
+    if (wasSet) {
+      qputenv("PATH", previous);
+    } else {
+      qunsetenv("PATH");
     }
   });
 }
@@ -808,6 +823,13 @@ private slots:
   void sessionStoreMergesImportedAndTrackedPlaytime();
   void sessionStoreListsBoundedPerGameHistory();
   void launchFeedbackGuardsRepeatedRequests();
+  void xeniaScannerImportsRecentTitlesAndDumps();
+  void xeniaScannerNormalizesWinePaths();
+  void xeniaScannerReadsBothTomlStringForms();
+  void xeniaScannerMarksUnavailableRecentGames();
+  void xeniaModelIsRepeatableAndPreservesLocalState();
+  void xeniaLauncherBuildsSafeCommands();
+  void xeniaLauncherRejectsMissingEmulator();
   void consolePortalsGroupRetroArchRomsAndCanFlatten();
   void consolePortalsDoNotRebuildTheLibraryWhenCoversChange();
   void consolePortalsDoNotMergeDifferentFiles();
@@ -6016,6 +6038,159 @@ void CoreTests::launchFeedbackGuardsRepeatedRequests() {
   QTRY_VERIFY_WITH_TIMEOUT(!state.property("pending").toBool(), 2500);
   QVERIFY(state.property("message").toString().isEmpty());
   QCOMPARE(dispatch.count(), 2);
+}
+
+void CoreTests::xeniaScannerImportsRecentTitlesAndDumps() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/Xenia");
+  const QString dump =
+      directory.path() + QStringLiteral("/Xenia/content/Fable II/default.xex");
+  QDir().mkpath(directory.path() + QStringLiteral("/Xenia/content/Fable II"));
+  writeFile(dump, "xex");
+  writeFile(directory.path() + QStringLiteral("/Xenia/content/Fable II/default.png"), "cover");
+  writeFile(root + QStringLiteral("/xenia-canary.config.toml"), "storage_root = \"\"\n");
+  writeFile(root + QStringLiteral("/recent.toml"),
+            QStringLiteral("[0]\nlast_run_time = 1788911947\n"
+                           "path = '%1'\n"
+                           "title_name = 'Fable II'\n")
+                .arg(dump)
+                .toUtf8());
+  const QString iso = directory.path() + QStringLiteral("/Xenia/Halo Reach.iso");
+  writeFile(iso, "iso");
+
+  const XeniaScanResult result = XeniaScanner::scan({root});
+  QVERIFY(!result.incomplete);
+  QCOMPARE(result.games.size(), 2);
+  bool sawRecent = false;
+  bool sawIso = false;
+  for (const XeniaGameRecord& game : result.games) {
+    if (game.path == dump) {
+      sawRecent = true;
+      QCOMPARE(game.title, QStringLiteral("Fable II"));
+      QVERIFY(game.coverPath.endsWith(QStringLiteral("default.png")));
+    } else if (game.path == iso) {
+      sawIso = true;
+      QCOMPARE(game.title, QStringLiteral("Halo Reach"));
+    }
+  }
+  QVERIFY(sawRecent);
+  QVERIFY(sawIso);
+}
+
+void CoreTests::xeniaScannerNormalizesWinePaths() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/Xenia");
+  writeFile(root + QStringLiteral("/xenia-canary.config.toml"), "storage_root = \"\"\n");
+  const QString xex = directory.path() + QStringLiteral("/Games/Game/default.xex");
+  writeFile(xex, "xex");
+  // recent.toml as written by Xenia under Proton: Z:\home\<user>\... backslash paths.
+  const QString winePath = QStringLiteral("Z:\\")
+                               + xex.mid(1).replace(QLatin1Char('/'), QLatin1Char('\\'));
+  writeFile(root + QStringLiteral("/recent.toml"),
+            QStringLiteral("[0]\nlast_run_time = 1\npath = '%1'\ntitle_name = 'A Game'\n")
+                .arg(winePath)
+                .toUtf8());
+
+  const XeniaScanResult result = XeniaScanner::scan({root});
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.first().path, xex);
+  QCOMPARE(result.games.first().title, QStringLiteral("A Game"));
+}
+
+void CoreTests::xeniaScannerReadsBothTomlStringForms() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/Xenia");
+  const QString game = directory.path() + QStringLiteral("/Games/Quoted/default.xex");
+  writeFile(game, "xex");
+  // The writer emits basic (") strings and does not guarantee key order.
+  writeFile(root + QStringLiteral("/recent.toml"),
+            QStringLiteral("[0]\ntitle_name = \"Quoted Title\"\nlast_run_time = 1\npath = \"%1\"\n")
+                .arg(game)
+                .toUtf8());
+
+  const XeniaScanResult result = XeniaScanner::scan({root});
+  QCOMPARE(result.games.size(), 1);
+  QCOMPARE(result.games.first().title, QStringLiteral("Quoted Title"));
+  QCOMPARE(result.games.first().path, game);
+}
+
+void CoreTests::xeniaScannerMarksUnavailableRecentGames() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/Xenia");
+  writeFile(root + QStringLiteral("/recent.toml"),
+            QStringLiteral("[0]\npath = 'Z:\\Games\\Missing\\default.xex'\ntitle_name = 'Missing'\n")
+                .toUtf8());
+
+  const XeniaScanResult result = XeniaScanner::scan({root});
+  QVERIFY(result.incomplete);
+  QCOMPARE(result.games.size(), 0);
+
+  // A prefix-relative drive letter cannot be resolved without the Wine prefix,
+  // so it is skipped rather than imported as a host path.
+  QTemporaryDir other;
+  QVERIFY(other.isValid());
+  const QString otherRoot = other.path() + QStringLiteral("/Xenia");
+  writeFile(otherRoot + QStringLiteral("/recent.toml"),
+            QStringLiteral("[0]\npath = 'C:\\Games\\Game\\default.xex'\ntitle_name = 'Drive C'\n")
+                .toUtf8());
+  const XeniaScanResult skipped = XeniaScanner::scan({otherRoot});
+  QCOMPARE(skipped.games.size(), 0);
+  QVERIFY(!skipped.warnings.isEmpty());
+}
+
+void CoreTests::xeniaModelIsRepeatableAndPreservesLocalState() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString root = directory.path() + QStringLiteral("/Xenia");
+  writeFile(root + QStringLiteral("/xenia-canary.config.toml"), "storage_root = \"\"\n");
+  const QString dump =
+      directory.path() + QStringLiteral("/Xenia/content/Game X/default.xex");
+  QDir().mkpath(directory.path() + QStringLiteral("/Xenia/content/Game X"));
+  writeFile(dump, "xex");
+  XeniaGameModel model(directory.path() + QStringLiteral("/omakade.sqlite3"));
+  model.refreshFromRoots({root});
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.data(model.index(0), GameRoles::Source).toString(), QStringLiteral("Xenia"));
+  QCOMPARE(model.data(model.index(0), GameRoles::System).toString(), QStringLiteral("xbox360"));
+  model.toggleFavorite(0);
+  model.refreshFromRoots({root});
+  QVERIFY(model.data(model.index(0), GameRoles::Favorite).toBool());
+}
+
+void CoreTests::xeniaLauncherBuildsSafeCommands() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString executable = directory.path() + QStringLiteral("/xenia_canary");
+  writeFile(executable, "#!/bin/sh\n");
+  QVERIFY(QFile::setPermissions(executable, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+                                                QFile::ReadGroup | QFile::ExeGroup |
+                                                QFile::ReadOther | QFile::ExeOther));
+  const auto restorePath = redirectPath(directory.path());
+
+  const LaunchCommand command =
+      GameLauncher::xeniaCommand(QStringLiteral("/games/Fable II/default.xex"));
+  QVERIFY(command.isValid());
+  QCOMPARE(QFileInfo(command.program).fileName(), QStringLiteral("xenia_canary"));
+  QCOMPARE(command.arguments, QStringList({QStringLiteral("/games/Fable II/default.xex")}));
+  QVERIFY(!GameLauncher::xeniaCommand(QStringLiteral("bad;id")).isValid());
+  QVERIFY(!GameLauncher::xeniaCommand(QStringLiteral("/games/notes.txt")).isValid());
+  QVERIFY(!GameLauncher::xeniaCommand(QStringLiteral("/games")).isValid());
+  // Disc images and archives the scanner imports are launchable targets too.
+  QVERIFY(GameLauncher::xeniaCommand(QStringLiteral("/games/halo.iso")).isValid());
+  QVERIFY(GameLauncher::xeniaCommand(QStringLiteral("/games/arcade.zar")).isValid());
+}
+
+void CoreTests::xeniaLauncherRejectsMissingEmulator() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const auto restorePath = redirectPath(directory.path());
+  const LaunchCommand command =
+      GameLauncher::xeniaCommand(QStringLiteral("/games/Fable II/default.xex"));
+  QVERIFY(!command.isValid());
 }
 
 void CoreTests::consolePortalsGroupRetroArchRomsAndCanFlatten() {
