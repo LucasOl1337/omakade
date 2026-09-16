@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Bundle an optional TV gaming agent skill with a Gamescope launcher that checks
+  the TV output, workspace, and audio sink before starting a game, and is skipped
+  entirely unless you install it.
+
 ## 1.9.2
 
 - Add an optional ProtonDB tier badge on library cards, off by default. Turn on both
