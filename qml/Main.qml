@@ -1659,6 +1659,8 @@ ApplicationWindow {
                             ? "shadPS4 was not found"
                             : root.emptySourceFilter === "Cemu" && CemuLibrary && !CemuLibrary.cemuDetected
                             ? "Cemu was not found"
+                            : root.emptySourceFilter === "Xenia" && XeniaLibrary && !XeniaLibrary.xeniaDetected
+                            ? "Xenia was not found"
                             : root.emptySourceFilter === "Dolphin" && DolphinLibrary && !DolphinLibrary.dolphinDetected
                             ? "Dolphin was not found"
                             : root.emptySourceFilter === "Battle.net" && BattleNetLibrary && !BattleNetLibrary.battleNetDetected
@@ -1689,6 +1691,8 @@ ApplicationWindow {
                               ? Shadps4Library.errorText
                               : root.emptySourceFilter === "Cemu" && CemuLibrary && CemuLibrary.errorText.length > 0
                               ? CemuLibrary.errorText
+                              : root.emptySourceFilter === "Xenia" && XeniaLibrary && XeniaLibrary.errorText.length > 0
+                              ? XeniaLibrary.errorText
                               : root.emptySourceFilter === "Dolphin" && DolphinLibrary && DolphinLibrary.errorText.length > 0
                               ? DolphinLibrary.errorText
                               : root.emptySourceFilter === "GOG" && HeroicLibrary && HeroicLibrary.errorText.length > 0
@@ -2496,6 +2500,23 @@ ApplicationWindow {
                 }
                 onSecondaryClicked: {
                     Library.toggleSource("Cemu")
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+            }
+            GlassButton {
+                id: xeniaSourceButton
+                objectName: "xeniaSourceButton"
+                text: "XENIA"
+                compact: true
+                visible: Preferences.xeniaEnabled
+                property string sourceName: "Xenia"
+                selected: Library.sourceFilters.indexOf("Xenia") >= 0
+                onClicked: {
+                    Library.sourceFilters = ["Xenia"]
+                    libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
+                }
+                onSecondaryClicked: {
+                    Library.toggleSource("Xenia")
                     libraryView.currentIndex = Library.rowCount() > 0 ? 0 : -1
                 }
             }

@@ -166,6 +166,8 @@ add_library(omakade_core STATIC
   src/library/RommGameModel.h
   src/library/CemuGameModel.cpp
   src/library/CemuGameModel.h
+  src/library/XeniaGameModel.cpp
+  src/library/XeniaGameModel.h
   src/library/ManualGameModel.cpp
   src/library/ManualGameModel.h
   src/library/PersonalDataRules.h
@@ -220,6 +222,8 @@ add_library(omakade_core STATIC
   src/sources/shadps4/Shadps4Scanner.h
   src/sources/cemu/CemuScanner.cpp
   src/sources/cemu/CemuScanner.h
+  src/sources/xenia/XeniaScanner.cpp
+  src/sources/xenia/XeniaScanner.h
   src/sources/dolphin/DolphinScanner.cpp
   src/sources/dolphin/DolphinScanner.h
   src/library/DolphinGameModel.cpp

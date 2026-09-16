@@ -33,6 +33,7 @@
 #include "library/Shadps4GameModel.h"
 #include "library/SteamGameModel.h"
 #include "library/UnifiedGameModel.h"
+#include "library/XeniaGameModel.h"
 #include "metadata/GameInsightsService.h"
 #include "metadata/GameMetadata.h"
 #include "metadata/ProtonDbService.h"
@@ -719,6 +720,7 @@ int main(int argc, char* argv[]) {
   std::unique_ptr<Shadps4GameModel> shadps4Games;
   std::unique_ptr<CemuGameModel> cemuGames;
   std::unique_ptr<RommGameModel> rommGames;
+  std::unique_ptr<XeniaGameModel> xeniaGames;
   std::unique_ptr<DolphinGameModel> dolphinGames;
   std::unique_ptr<BattleNetGameModel> battleNetGames;
   std::unique_ptr<PlaySessionStore> playSessionStore;
@@ -732,6 +734,7 @@ int main(int argc, char* argv[]) {
   RyujinxGameModel* ryujinxLibrary = nullptr;
   Shadps4GameModel* shadps4Library = nullptr;
   CemuGameModel* cemuLibrary = nullptr;
+  XeniaGameModel* xeniaLibrary = nullptr;
   DolphinGameModel* dolphinLibrary = nullptr;
   BattleNetGameModel* battleNetLibrary = nullptr;
   QString libraryDatabasePath;
@@ -822,6 +825,9 @@ int main(int argc, char* argv[]) {
         std::make_unique<CemuGameModel>(steamLibrary->databasePath(), playSessionStore.get());
     cemuLibrary = cemuGames.get();
     rommGames = std::make_unique<RommGameModel>(QFileInfo(libraryDatabasePath).dir().filePath("romm-catalog.sqlite3"), &preferences, playSessionStore.get());
+    xeniaGames =
+        std::make_unique<XeniaGameModel>(steamLibrary->databasePath(), playSessionStore.get());
+    xeniaLibrary = xeniaGames.get();
     dolphinGames =
         std::make_unique<DolphinGameModel>(steamLibrary->databasePath(), playSessionStore.get());
     dolphinLibrary = dolphinGames.get();
@@ -834,6 +840,7 @@ int main(int argc, char* argv[]) {
     consolePortals->addRomModel(ryujinxGames.get());
     consolePortals->addRomModel(cemuGames.get());
     consolePortals->addRomModel(rommGames.get());
+    consolePortals->addRomModel(xeniaGames.get());
     consolePortals->addRomModel(pcsx2Games.get());
     consolePortals->addRomModel(shadps4Games.get());
   }
@@ -884,6 +891,9 @@ int main(int argc, char* argv[]) {
   if (cemuGames != nullptr) {
     unifiedGames.addSourceModel(cemuGames.get());
   }
+  if (xeniaGames != nullptr) {
+    unifiedGames.addSourceModel(xeniaGames.get());
+  }
   if (dolphinGames != nullptr) {
     unifiedGames.addSourceModel(dolphinGames.get());
   }
@@ -905,6 +915,7 @@ int main(int argc, char* argv[]) {
     unifiedGames.setSourceEnabled(QStringLiteral("shadPS4"), preferences.shadps4Enabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Cemu"), preferences.cemuEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("RomM"), preferences.rommEnabled());
+    unifiedGames.setSourceEnabled(QStringLiteral("Xenia"), preferences.xeniaEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), preferences.dolphinEnabled());
     unifiedGames.setSourceEnabled(QStringLiteral("Battle.net"), preferences.battleNetEnabled());
   };
@@ -937,6 +948,9 @@ int main(int argc, char* argv[]) {
     } else if (key.source.compare(QStringLiteral("Cemu"), Qt::CaseInsensitive) == 0 &&
                preferences.cemuAutoEnabled()) {
       unifiedGames.setSourceEnabled(QStringLiteral("Cemu"), true);
+    } else if (key.source.compare(QStringLiteral("Xenia"), Qt::CaseInsensitive) == 0 &&
+               preferences.xeniaAutoEnabled()) {
+      unifiedGames.setSourceEnabled(QStringLiteral("Xenia"), true);
     } else if (key.source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0 &&
                preferences.dolphinAutoEnabled()) {
       unifiedGames.setSourceEnabled(QStringLiteral("Dolphin"), true);
@@ -986,6 +1000,11 @@ int main(int argc, char* argv[]) {
                  cemuLibrary != nullptr &&
                  (preferences.cemuEnabled() || preferences.cemuAutoEnabled())) {
         cemuLibrary->refresh();
+        refreshStarted = true;
+      } else if (key.source.compare(QStringLiteral("Xenia"), Qt::CaseInsensitive) == 0 &&
+                 xeniaLibrary != nullptr &&
+                 (preferences.xeniaEnabled() || preferences.xeniaAutoEnabled())) {
+        xeniaLibrary->refresh();
         refreshStarted = true;
       } else if (key.source.compare(QStringLiteral("Dolphin"), Qt::CaseInsensitive) == 0 &&
                  dolphinLibrary != nullptr &&
@@ -1306,6 +1325,7 @@ int main(int argc, char* argv[]) {
   engine.rootContext()->setContextProperty(QStringLiteral("Shadps4Library"), shadps4Library);
   engine.rootContext()->setContextProperty(QStringLiteral("CemuLibrary"), cemuLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("RommLibrary"), rommGames.get());
+  engine.rootContext()->setContextProperty(QStringLiteral("XeniaLibrary"), xeniaLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("DolphinLibrary"), dolphinLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("BattleNetLibrary"), battleNetLibrary);
   engine.rootContext()->setContextProperty(QStringLiteral("Launcher"), &launcher);
@@ -4314,6 +4334,16 @@ int main(int argc, char* argv[]) {
                        if (cemuLibrary->cemuDetected() && preferences.cemuAutoEnabled()) {
                          preferences.setCemuAutoEnabled(false);
                          preferences.setCemuEnabled(true);
+                       }
+                     });
+  }
+  if (xeniaLibrary != nullptr && (preferences.xeniaEnabled() || preferences.xeniaAutoEnabled())) {
+    QTimer::singleShot(745, xeniaLibrary, &XeniaGameModel::refresh);
+    QObject::connect(xeniaLibrary, &XeniaGameModel::statusChanged, xeniaLibrary,
+                     [&preferences, xeniaLibrary] {
+                       if (xeniaLibrary->xeniaDetected() && preferences.xeniaAutoEnabled()) {
+                         preferences.setXeniaAutoEnabled(false);
+                         preferences.setXeniaEnabled(true);
                        }
                      });
   }
